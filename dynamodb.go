@@ -19,6 +19,9 @@ import (
 	"github.com/kvtools/valkeyrie/store"
 )
 
+// StoreName the name of the store.
+const StoreName = "dynamodb"
+
 const (
 	// DefaultReadCapacityUnits default read capacity used to create table.
 	DefaultReadCapacityUnits = 2
@@ -47,8 +50,6 @@ var (
 	ErrBucketOptionMissing = errors.New("missing dynamodb bucket/table name")
 	// ErrMultipleEndpointsUnsupported is returned when more than one endpoint is provided.
 	ErrMultipleEndpointsUnsupported = errors.New("dynamodb only supports one endpoint")
-	// ErrTableCreateTimeout table creation timed out.
-	ErrTableCreateTimeout = errors.New("dynamodb table creation timed out")
 	// ErrDeleteTreeTimeout delete batch timed out.
 	ErrDeleteTreeTimeout = errors.New("delete batch timed out")
 	// ErrLockAcquireCancelled stop called before lock was acquired.
@@ -56,12 +57,34 @@ var (
 )
 
 // Register register a store provider in valkeyrie for AWS DynamoDB.
-func Register() {
-	valkeyrie.AddStore(store.DYNAMODB, New)
+
+// registers AWS DynamoDB to Valkeyrie.
+func init() {
+	valkeyrie.Register(StoreName, newStore)
 }
 
-// New opens and creates a new table.
-func New(_ context.Context, endpoints []string, options *store.Config) (store.Store, error) {
+// Config the AWS DynamoDB configuration.
+type Config struct {
+	Bucket string
+}
+
+func newStore(ctx context.Context, endpoints []string, options valkeyrie.Config) (store.Store, error) {
+	cfg, ok := options.(*Config)
+	if !ok && cfg != nil {
+		return nil, &store.InvalidConfigurationError{Store: StoreName, Config: options}
+	}
+
+	return New(ctx, endpoints, cfg)
+}
+
+// Store implements the store.Store interface.
+type Store struct {
+	dynamoSvc dynamodbiface.DynamoDBAPI
+	tableName string
+}
+
+// New creates a new AWS DynamoDB client.
+func New(_ context.Context, endpoints []string, options *Config) (*Store, error) {
 	if len(endpoints) > 1 {
 		return nil, ErrMultipleEndpointsUnsupported
 	}
@@ -76,7 +99,7 @@ func New(_ context.Context, endpoints []string, options *store.Config) (store.St
 		}
 	}
 
-	ddb := &DynamoDB{
+	ddb := &Store{
 		dynamoSvc: dynamodb.New(session.Must(session.NewSession(config))),
 		tableName: options.Bucket,
 	}
@@ -84,14 +107,8 @@ func New(_ context.Context, endpoints []string, options *store.Config) (store.St
 	return ddb, nil
 }
 
-// DynamoDB store used to interact with AWS DynamoDB.
-type DynamoDB struct {
-	dynamoSvc dynamodbiface.DynamoDBAPI
-	tableName string
-}
-
 // Put a value at the specified key.
-func (ddb *DynamoDB) Put(ctx context.Context, key string, value []byte, opts *store.WriteOptions) error {
+func (ddb *Store) Put(ctx context.Context, key string, value []byte, opts *store.WriteOptions) error {
 	keyAttr := make(map[string]*dynamodb.AttributeValue)
 	keyAttr[partitionKey] = &dynamodb.AttributeValue{S: aws.String(key)}
 
@@ -135,7 +152,7 @@ func (ddb *DynamoDB) Put(ctx context.Context, key string, value []byte, opts *st
 }
 
 // Get a value given its key.
-func (ddb *DynamoDB) Get(ctx context.Context, key string, opts *store.ReadOptions) (*store.KVPair, error) {
+func (ddb *Store) Get(ctx context.Context, key string, opts *store.ReadOptions) (*store.KVPair, error) {
 	if opts == nil {
 		opts = &store.ReadOptions{
 			Consistent: true, // default to enabling read consistency.
@@ -158,7 +175,7 @@ func (ddb *DynamoDB) Get(ctx context.Context, key string, opts *store.ReadOption
 	return decodeItem(res.Item)
 }
 
-func (ddb *DynamoDB) getKey(ctx context.Context, key string, options *store.ReadOptions) (*dynamodb.GetItemOutput, error) {
+func (ddb *Store) getKey(ctx context.Context, key string, options *store.ReadOptions) (*dynamodb.GetItemOutput, error) {
 	return ddb.dynamoSvc.GetItemWithContext(ctx, &dynamodb.GetItemInput{
 		TableName:      aws.String(ddb.tableName),
 		ConsistentRead: aws.Bool(options.Consistent),
@@ -169,7 +186,7 @@ func (ddb *DynamoDB) getKey(ctx context.Context, key string, options *store.Read
 }
 
 // Delete the value at the specified key.
-func (ddb *DynamoDB) Delete(ctx context.Context, key string) error {
+func (ddb *Store) Delete(ctx context.Context, key string) error {
 	_, err := ddb.dynamoSvc.DeleteItemWithContext(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(ddb.tableName),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -184,7 +201,7 @@ func (ddb *DynamoDB) Delete(ctx context.Context, key string) error {
 }
 
 // Exists if a Key exists in the store.
-func (ddb *DynamoDB) Exists(ctx context.Context, key string, opts *store.ReadOptions) (bool, error) {
+func (ddb *Store) Exists(ctx context.Context, key string, _ *store.ReadOptions) (bool, error) {
 	res, err := ddb.dynamoSvc.GetItemWithContext(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(ddb.tableName),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -210,7 +227,7 @@ func (ddb *DynamoDB) Exists(ctx context.Context, key string, opts *store.ReadOpt
 }
 
 // List the content of a given prefix.
-func (ddb *DynamoDB) List(ctx context.Context, directory string, opts *store.ReadOptions) ([]*store.KVPair, error) {
+func (ddb *Store) List(ctx context.Context, directory string, opts *store.ReadOptions) ([]*store.KVPair, error) {
 	if opts == nil {
 		opts = &store.ReadOptions{
 			Consistent: true, // default to enabling read consistency.
@@ -251,7 +268,7 @@ func (ddb *DynamoDB) List(ctx context.Context, directory string, opts *store.Rea
 		return nil, store.ErrKeyNotFound
 	}
 
-	kvArray := []*store.KVPair{}
+	var kvArray []*store.KVPair
 	var val *store.KVPair
 
 	for _, item := range items {
@@ -276,7 +293,7 @@ func (ddb *DynamoDB) List(ctx context.Context, directory string, opts *store.Rea
 }
 
 // DeleteTree deletes a range of keys under a given directory.
-func (ddb *DynamoDB) DeleteTree(ctx context.Context, keyPrefix string) error {
+func (ddb *Store) DeleteTree(ctx context.Context, keyPrefix string) error {
 	expAttr := make(map[string]*dynamodb.AttributeValue)
 
 	expAttr[":namePrefix"] = &dynamodb.AttributeValue{S: aws.String(keyPrefix)}
@@ -312,7 +329,7 @@ func (ddb *DynamoDB) DeleteTree(ctx context.Context, keyPrefix string) error {
 }
 
 // AtomicPut Atomic CAS operation on a single value.
-func (ddb *DynamoDB) AtomicPut(ctx context.Context, key string, value []byte, previous *store.KVPair, opts *store.WriteOptions) (bool, *store.KVPair, error) {
+func (ddb *Store) AtomicPut(ctx context.Context, key string, value []byte, previous *store.KVPair, opts *store.WriteOptions) (bool, *store.KVPair, error) {
 	getRes, err := ddb.getKey(ctx, key, &store.ReadOptions{
 		Consistent: true, // enable the read consistent flag.
 	})
@@ -390,7 +407,7 @@ func (ddb *DynamoDB) AtomicPut(ctx context.Context, key string, value []byte, pr
 }
 
 // AtomicDelete delete of a single value.
-func (ddb *DynamoDB) AtomicDelete(ctx context.Context, key string, previous *store.KVPair) (bool, error) {
+func (ddb *Store) AtomicDelete(ctx context.Context, key string, previous *store.KVPair) (bool, error) {
 	getRes, err := ddb.getKey(ctx, key, &store.ReadOptions{
 		Consistent: true, // enable the read consistent flag.
 	})
@@ -430,10 +447,10 @@ func (ddb *DynamoDB) AtomicDelete(ctx context.Context, key string, previous *sto
 }
 
 // Close nothing to see here.
-func (ddb *DynamoDB) Close() error { return nil }
+func (ddb *Store) Close() error { return nil }
 
 // NewLock has to implemented at the library level since it's not supported by DynamoDB.
-func (ddb *DynamoDB) NewLock(_ context.Context, key string, opts *store.LockOptions) (store.Locker, error) {
+func (ddb *Store) NewLock(_ context.Context, key string, opts *store.LockOptions) (store.Locker, error) {
 	ttl := defaultLockTTL
 	var value []byte
 	renewCh := make(chan struct{})
@@ -464,16 +481,16 @@ func (ddb *DynamoDB) NewLock(_ context.Context, key string, opts *store.LockOpti
 }
 
 // Watch has to implemented at the library level since it's not supported by DynamoDB.
-func (ddb *DynamoDB) Watch(_ context.Context, _ string, _ *store.ReadOptions) (<-chan *store.KVPair, error) {
+func (ddb *Store) Watch(_ context.Context, _ string, _ *store.ReadOptions) (<-chan *store.KVPair, error) {
 	return nil, store.ErrCallNotSupported
 }
 
 // WatchTree has to implemented at the library level since it's not supported by DynamoDB.
-func (ddb *DynamoDB) WatchTree(_ context.Context, _ string, _ *store.ReadOptions) (<-chan []*store.KVPair, error) {
+func (ddb *Store) WatchTree(_ context.Context, _ string, _ *store.ReadOptions) (<-chan []*store.KVPair, error) {
 	return nil, store.ErrCallNotSupported
 }
 
-func (ddb *DynamoDB) createTable() error {
+func (ddb *Store) createTable() error {
 	_, err := ddb.dynamoSvc.CreateTable(&dynamodb.CreateTableInput{
 		AttributeDefinitions: []*dynamodb.AttributeDefinition{
 			{
@@ -517,7 +534,7 @@ func (ddb *DynamoDB) createTable() error {
 	return nil
 }
 
-func (ddb *DynamoDB) retryDeleteTree(ctx context.Context, items map[string][]*dynamodb.WriteRequest) error {
+func (ddb *Store) retryDeleteTree(ctx context.Context, items map[string][]*dynamodb.WriteRequest) error {
 	batchResult, err := ddb.dynamoSvc.BatchWriteItemWithContext(ctx, &dynamodb.BatchWriteItemInput{
 		RequestItems: items,
 	})
@@ -563,7 +580,7 @@ func (ddb *DynamoDB) retryDeleteTree(ctx context.Context, items map[string][]*dy
 }
 
 type dynamodbLock struct {
-	ddb      *DynamoDB
+	ddb      *Store
 	last     *store.KVPair
 	renewCh  chan struct{}
 	unlockCh chan struct{}

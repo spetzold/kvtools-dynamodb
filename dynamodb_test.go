@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/kvtools/valkeyrie"
 	"github.com/kvtools/valkeyrie/store"
-	"github.com/kvtools/valkeyrie/testutils"
+	"github.com/kvtools/valkeyrie/testsuite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,18 +23,16 @@ const TestTableName = "test-1-valkeyrie"
 const testTimeout = 60 * time.Second
 
 func TestRegister(t *testing.T) {
-	Register()
-
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 
-	config := &store.Config{Bucket: "test-1-valkeyrie"}
+	config := &Config{Bucket: "test-1-valkeyrie"}
 
-	kv, err := valkeyrie.NewStore(ctx, store.DYNAMODB, []string{}, config)
+	kv, err := valkeyrie.NewStore(ctx, StoreName, []string{}, config)
 	require.NoError(t, err)
 	assert.NotNil(t, kv)
 
-	assert.IsTypef(t, kv, new(DynamoDB), "Error registering and initializing DynamoDB")
+	assert.IsTypef(t, kv, new(Store), "Error registering and initializing DynamoDB")
 }
 
 func TestSetup(t *testing.T) {
@@ -48,17 +46,17 @@ func TestDynamoDBStore(t *testing.T) {
 	ddbStore := newDynamoDBStore(t)
 	backupStore := newDynamoDBStore(t)
 
-	testutils.RunTestCommon(t, ddbStore)
-	testutils.RunTestAtomic(t, ddbStore)
-	testutils.RunTestTTL(t, ddbStore, backupStore)
+	testsuite.RunTestCommon(t, ddbStore)
+	testsuite.RunTestAtomic(t, ddbStore)
+	testsuite.RunTestTTL(t, ddbStore, backupStore)
 }
 
 func TestDynamoDBStoreLock(t *testing.T) {
 	ddbStore := newDynamoDBStore(t)
 	backupStore := newDynamoDBStore(t)
 
-	testutils.RunTestLock(t, ddbStore)
-	testutils.RunTestLockTTL(t, ddbStore, backupStore)
+	testsuite.RunTestLock(t, ddbStore)
+	testsuite.RunTestLockTTL(t, ddbStore, backupStore)
 }
 
 func TestDynamoDBStoreUnsupported(t *testing.T) {
@@ -91,7 +89,7 @@ func TestBatchWrite(t *testing.T) {
 	}
 	mock.Count = 1
 
-	kv := &DynamoDB{
+	kv := &Store{
 		dynamoSvc: mock,
 		tableName: "test-1-valkeyrie",
 	}
@@ -169,12 +167,12 @@ func newDynamoDB() *dynamodb.DynamoDB {
 	return dynamodb.New(sess)
 }
 
-func newDynamoDBStore(t *testing.T) *DynamoDB {
+func newDynamoDBStore(t *testing.T) *Store {
 	t.Helper()
 
 	ddb := newDynamoDB()
 
-	ddbStore := &DynamoDB{
+	ddbStore := &Store{
 		dynamoSvc: ddb,
 		tableName: TestTableName,
 	}

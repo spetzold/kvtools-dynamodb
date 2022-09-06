@@ -1,0 +1,15 @@
+version: "3.9"
+
+# when running test local, you can specify the image version using the
+# <service>_VERSION.
+# Example, to run consul with the version 1.8:
+# CONSUL_VERSION=1.8 make
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:${DYNAMODB_VERSION:-1.18.0}
+    container_name: dynamodb
+    healthcheck:
+      test: curl localhost:8000
+    ports:
+      - 8000:8000
