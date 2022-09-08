@@ -38,20 +38,18 @@ import (
 )
 
 func main() {
-	addr := "localhost:8500"
+	ctx := context.Background()
 
-	// Initialize a new store.
 	config := &dynamodb.Config{
 			Bucket: "example",
 	}
 
-	kv, err := valkeyrie.NewStore(dynamodb.StoreName, []string{addr}, config)
+	kv, err := valkeyrie.NewStore(ctx, dynamodb.StoreName, []string{"localhost:8500"}, config)
 	if err != nil {
 		log.Fatal("Cannot create store")
 	}
 
 	key := "foo"
-	ctx := context.Background()
 
 	err = kv.Put(ctx, key, []byte("bar"), nil)
 	if err != nil {
