@@ -11,8 +11,8 @@ github.com/jmespath/go-jmespath/internal/testify v1.5.1/go.mod h1:L3OGu8Wl2/fWfC
 github.com/kr/pretty v0.2.0 h1:s5hAObm+yFO5uHYt5dYjxi2rXrsnmRpJx4OYvIWUaQs=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
 github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
-github.com/kvtools/valkeyrie v0.4.2-0.20220908144207-547378b52b33 h1:WhRuud5WiclCj+ebxgHB8ZyjlHXhjmqw9YhalgSkC9k=
-github.com/kvtools/valkeyrie v0.4.2-0.20220908144207-547378b52b33/go.mod h1:bDi/OdhJCSbGPMsCgUQl881yuEweKCSItAtTBI+ZjpU=
+github.com/kvtools/valkeyrie v1.0.0 h1:LAITop2wPoYCMitR24GZZsW0b57hmI+ePD18VRTtOf0=
+github.com/kvtools/valkeyrie v1.0.0/go.mod h1:bDi/OdhJCSbGPMsCgUQl881yuEweKCSItAtTBI+ZjpU=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
