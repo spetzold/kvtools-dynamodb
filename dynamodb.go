@@ -27,8 +27,6 @@ const (
 	DefaultReadCapacityUnits = 2
 	// DefaultWriteCapacityUnits default write capacity used to create table.
 	DefaultWriteCapacityUnits = 2
-	// TableCreateTimeoutSeconds the maximum time we wait for the AWS DynamoDB table to be created.
-	TableCreateTimeoutSeconds = 30
 	// DeleteTreeTimeoutSeconds the maximum time we retry a write batch.
 	DeleteTreeTimeoutSeconds = 30
 )

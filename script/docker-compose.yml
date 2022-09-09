@@ -12,4 +12,4 @@ services:
     healthcheck:
       test: curl localhost:8000
     ports:
-      - 8000:8000
+      - "8000:8000"
