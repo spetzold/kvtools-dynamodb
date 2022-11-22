@@ -1,4 +1,4 @@
-module github.com/kvtools/dynamodb
+module github.com/spetzold/kvtools-dynamodb
 
 go 1.18
 
