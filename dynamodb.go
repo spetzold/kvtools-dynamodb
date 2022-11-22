@@ -64,6 +64,7 @@ func init() {
 // Config the AWS DynamoDB configuration.
 type Config struct {
 	Bucket string
+	Region *string
 }
 
 func newStore(ctx context.Context, endpoints []string, options valkeyrie.Config) (store.Store, error) {
@@ -90,11 +91,12 @@ func New(_ context.Context, endpoints []string, options *Config) (*Store, error)
 	if options == nil || options.Bucket == "" {
 		return nil, ErrBucketOptionMissing
 	}
-	var config *aws.Config
+	var config *aws.Config = &aws.Config{}
 	if len(endpoints) == 1 {
-		config = &aws.Config{
-			Endpoint: aws.String(endpoints[0]),
-		}
+		config.Endpoint = aws.String(endpoints[0])
+	}
+	if options.Region != nil && *options.Region != "" {
+		config.Region = options.Region
 	}
 
 	ddb := &Store{
