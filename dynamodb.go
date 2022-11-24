@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"net/url"
@@ -581,9 +580,10 @@ type subscribe struct {
 
 func newSubscribe(ctx context.Context, key string) (*subscribe, error) {
 
-	var addr = flag.String("addr", "0dub4qh1di.execute-api.eu-central-1.amazonaws.com", "http service address")
+	//var addr = flag.String("addr", "0dub4qh1di.execute-api.eu-central-1.amazonaws.com", "http service address")
+	addr := "0dub4qh1di.execute-api.eu-central-1.amazonaws.com"
 
-	u := url.URL{Scheme: "wss", Host: *addr, Path: "/dev"}
+	u := url.URL{Scheme: "wss", Host: addr, Path: "/dev"}
 	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
