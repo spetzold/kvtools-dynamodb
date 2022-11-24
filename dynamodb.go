@@ -4,8 +4,12 @@ package dynamodb
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
+	"log"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/gorilla/websocket"
 	"github.com/kvtools/valkeyrie"
 	"github.com/kvtools/valkeyrie/store"
 )
@@ -481,13 +486,158 @@ func (ddb *Store) NewLock(_ context.Context, key string, opts *store.LockOptions
 }
 
 // Watch has to implemented at the library level since it's not supported by DynamoDB.
-func (ddb *Store) Watch(_ context.Context, _ string, _ *store.ReadOptions) (<-chan *store.KVPair, error) {
-	return nil, store.ErrCallNotSupported
+func (ddb *Store) Watch(ctx context.Context, key string, _ *store.ReadOptions) (<-chan *store.KVPair, error) {
+	watchCh := make(chan *store.KVPair)
+	nKey := key
+
+	get := getter(func() (interface{}, error) {
+		// TODO: Take store.ReadOptions from parameters?
+		pair, err := ddb.Get(ctx, nKey, nil)
+		if err != nil {
+			return nil, err
+		}
+		return pair, nil
+	})
+
+	push := pusher(func(v interface{}) {
+		if val, ok := v.(*store.KVPair); ok {
+			watchCh <- val
+		}
+	})
+
+	sub, err := newSubscribe(ctx, nKey)
+	if err != nil {
+		return nil, err
+	}
+
+	go func(ctx context.Context, sub *subscribe, get getter, push pusher) {
+		defer func() {
+			close(watchCh)
+			_ = sub.Close()
+		}()
+
+		msgCh := sub.Receive(ctx)
+		if err := watchLoop(ctx, msgCh, get, push); err != nil {
+			log.Printf("watchLoop in Watch err: %v", err)
+		}
+	}(ctx, sub, get, push)
+
+	return watchCh, nil
 }
 
 // WatchTree has to implemented at the library level since it's not supported by DynamoDB.
 func (ddb *Store) WatchTree(_ context.Context, _ string, _ *store.ReadOptions) (<-chan []*store.KVPair, error) {
 	return nil, store.ErrCallNotSupported
+}
+
+// getter defines a func type which retrieves data from remote storage.
+type getter func() (interface{}, error)
+
+// pusher defines a func type which pushes data blob into watch channel.
+type pusher func(interface{})
+
+func watchLoop(ctx context.Context, msgCh chan *string, get getter, push pusher) error {
+	// deliver the original data before we set up any events.
+	pair, err := get()
+	if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
+		return err
+	}
+
+	if errors.Is(err, store.ErrKeyNotFound) {
+		pair = &store.KVPair{}
+	}
+
+	push(pair)
+
+	for m := range msgCh {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// retrieve and send back.
+		pair, err := get()
+		if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
+			return err
+		}
+
+		// in case of watching a key that has been expired or deleted return and empty KV.
+		//if errors.Is(err, store.ErrKeyNotFound) && (m.Payload == "expired" || m.Payload == "del") {
+		if errors.Is(err, store.ErrKeyNotFound) && (*m == "expired" || *m == "del") {
+			pair = &store.KVPair{}
+		}
+
+		push(pair)
+	}
+
+	return nil
+}
+
+type subscribe struct {
+	websocket *websocket.Conn
+	closeCh   chan struct{}
+}
+
+func newSubscribe(ctx context.Context, key string) (*subscribe, error) {
+
+	var addr = flag.String("addr", "0dub4qh1di.execute-api.eu-central-1.amazonaws.com", "http service address")
+
+	u := url.URL{Scheme: "wss", Host: *addr, Path: "/dev"}
+	log.Printf("connecting to %s", u.String())
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		log.Fatal("dial:", err)
+		return nil, err
+	}
+	defer c.Close()
+	log.Printf("connected to %s", u.String())
+	return &subscribe{
+		websocket: c,
+		closeCh:   make(chan struct{}),
+	}, nil
+}
+
+func (s *subscribe) Close() error {
+	close(s.closeCh)
+	return s.websocket.Close()
+}
+
+func (s *subscribe) Receive(ctx context.Context) chan *string {
+	msgCh := make(chan *string)
+	go s.receiveLoop(ctx, msgCh)
+	return msgCh
+}
+
+func (s *subscribe) receiveLoop(ctx context.Context, msgCh chan *string) {
+	defer close(msgCh)
+
+	for {
+		select {
+		case <-s.closeCh:
+			return
+		case <-ctx.Done():
+			return
+		default:
+			_, msg, err := s.websocket.ReadMessage()
+			if err != nil {
+				return
+			}
+			if msg != nil {
+				var jsonObject map[string]interface{}
+				err = json.Unmarshal(msg, &jsonObject)
+				if err != nil {
+					return
+				}
+				message, ok := jsonObject["event"].(string)
+				if !ok {
+					return
+				}
+				msgCh <- &(message)
+			}
+		}
+	}
 }
 
 func (ddb *Store) createTable() error {
