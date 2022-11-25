@@ -519,7 +519,6 @@ func (ddb *Store) Watch(ctx context.Context, key string, _ *store.ReadOptions) (
 		if err := watchLoop(ctx, msgCh, get, push); err != nil {
 			log.Printf("watchLoop in Watch err: %v", err)
 		}
-		log.Printf("Watch loop finished")
 	}(ctx, sub, get, push)
 
 	return watchCh, nil
@@ -549,7 +548,6 @@ func watchLoop(ctx context.Context, msgCh chan *string, get getter, push pusher)
 
 	push(pair)
 
-	log.Printf("Waiting for msg in watchLoop")
 	for m := range msgCh {
 		select {
 		case <-ctx.Done():
@@ -571,7 +569,6 @@ func watchLoop(ctx context.Context, msgCh chan *string, get getter, push pusher)
 
 		push(pair)
 	}
-	log.Printf("no more msg in watchLoop")
 
 	return nil
 }
@@ -584,18 +581,14 @@ type subscribe struct {
 func newSubscribe(ctx context.Context, key string) (*subscribe, error) {
 
 	// connect to WSS server
-	//var addr = flag.String("addr", "0dub4qh1di.execute-api.eu-central-1.amazonaws.com", "http service address")
 	addr := "0dub4qh1di.execute-api.eu-central-1.amazonaws.com"
 
 	u := url.URL{Scheme: "wss", Host: addr, Path: "/dev"}
-	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		log.Fatal("dial:", err)
 		return nil, err
 	}
-	log.Printf("connected to %s", u.String())
 
 	// subscribe to key
 	msg := map[string]string{
@@ -604,12 +597,10 @@ func newSubscribe(ctx context.Context, key string) (*subscribe, error) {
 	}
 	jsonStr, err := json.Marshal(msg)
 	if err != nil {
-		log.Println("Error: " + err.Error())
 		return nil, err
 	}
 	err = c.WriteMessage(websocket.TextMessage, []byte(jsonStr))
 	if err != nil {
-		log.Println("write:", err)
 		return nil, err
 	}
 
@@ -645,19 +636,15 @@ func (s *subscribe) receiveLoop(ctx context.Context, msgCh chan *string) {
 				return
 			}
 			if msg != nil {
-				log.Printf("received message")
 				var jsonObject map[string]interface{}
 				err = json.Unmarshal(msg, &jsonObject)
 				if err != nil {
-					log.Printf("Unmarshal failed in receiveLoop")
-					return
+					continue
 				}
 				message, ok := jsonObject["event"].(string)
 				if !ok {
-					log.Printf("Msg conversion failed in receiveLoop")
-					return
+					continue
 				}
-				log.Printf("message: %s", message)
 				msgCh <- &(message)
 			}
 		}
