@@ -642,9 +642,7 @@ func (s *subscribe) receiveLoop(ctx context.Context, msgCh chan *string) {
 		default:
 			_, msg, err := s.websocket.ReadMessage()
 			if err != nil {
-				if errors.Is(err, &websocket.CloseError{}) {
-					log.Printf("connection closed")
-				}
+				log.Printf("connection closed %v", err)
 				return
 			}
 			if msg != nil {
