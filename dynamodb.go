@@ -67,8 +67,9 @@ func init() {
 
 // Config the AWS DynamoDB configuration.
 type Config struct {
-	Bucket string
-	Region *string
+	Bucket           string
+	Region           *string
+	WssServerAddress *string
 }
 
 func newStore(ctx context.Context, endpoints []string, options valkeyrie.Config) (store.Store, error) {
@@ -82,8 +83,9 @@ func newStore(ctx context.Context, endpoints []string, options valkeyrie.Config)
 
 // Store implements the store.Store interface.
 type Store struct {
-	dynamoSvc dynamodbiface.DynamoDBAPI
-	tableName string
+	dynamoSvc        dynamodbiface.DynamoDBAPI
+	tableName        string
+	wssServerAddress string // the wss server address is used for the watch functionality
 }
 
 // New creates a new AWS DynamoDB client.
@@ -103,9 +105,15 @@ func New(_ context.Context, endpoints []string, options *Config) (*Store, error)
 		config.Region = options.Region
 	}
 
+	wssServerAddress := ""
+	if options.WssServerAddress != nil {
+		wssServerAddress = *options.WssServerAddress
+	}
+
 	ddb := &Store{
-		dynamoSvc: dynamodb.New(session.Must(session.NewSession(config))),
-		tableName: options.Bucket,
+		dynamoSvc:        dynamodb.New(session.Must(session.NewSession(config))),
+		tableName:        options.Bucket,
+		wssServerAddress: wssServerAddress,
 	}
 
 	return ddb, nil
@@ -504,7 +512,7 @@ func (ddb *Store) Watch(ctx context.Context, key string, _ *store.ReadOptions) (
 		}
 	})
 
-	sub, err := newSubscribe(ctx, nKey)
+	sub, err := newSubscribe(ctx, nKey, ddb.wssServerAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -577,12 +585,14 @@ type subscribe struct {
 	closeCh   chan struct{}
 }
 
-func newSubscribe(ctx context.Context, key string) (*subscribe, error) {
+func newSubscribe(ctx context.Context, key string, wssServerAddress string) (*subscribe, error) {
 
 	// connect to WSS server
-	addr := "0dub4qh1di.execute-api.eu-central-1.amazonaws.com"
 
-	u := url.URL{Scheme: "wss", Host: addr, Path: "/dev"}
+	u, err := url.Parse(wssServerAddress)
+	if err != nil {
+		return nil, err
+	}
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
