@@ -562,8 +562,7 @@ func watchLoop(ctx context.Context, msgCh chan *string, get getter, push pusher)
 		}
 
 		// in case of watching a key that has been expired or deleted return and empty KV.
-		//if errors.Is(err, store.ErrKeyNotFound) && (m.Payload == "expired" || m.Payload == "del") {
-		if errors.Is(err, store.ErrKeyNotFound) && (*m == "expired" || *m == "del") {
+		if errors.Is(err, store.ErrKeyNotFound) && (*m == "REMOVE") {
 			pair = &store.KVPair{}
 		}
 
