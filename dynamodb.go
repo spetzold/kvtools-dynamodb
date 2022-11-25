@@ -625,6 +625,7 @@ func (s *subscribe) receiveLoop(ctx context.Context, msgCh chan *string) {
 				return
 			}
 			if msg != nil {
+				log.Printf("received message")
 				var jsonObject map[string]interface{}
 				err = json.Unmarshal(msg, &jsonObject)
 				if err != nil {
@@ -634,6 +635,7 @@ func (s *subscribe) receiveLoop(ctx context.Context, msgCh chan *string) {
 				if !ok {
 					return
 				}
+				log.Printf("message: %s", message)
 				msgCh <- &(message)
 			}
 		}
