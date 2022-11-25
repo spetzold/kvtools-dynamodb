@@ -519,6 +519,7 @@ func (ddb *Store) Watch(ctx context.Context, key string, _ *store.ReadOptions) (
 		if err := watchLoop(ctx, msgCh, get, push); err != nil {
 			log.Printf("watchLoop in Watch err: %v", err)
 		}
+		log.Printf("Watch loop finished")
 	}(ctx, sub, get, push)
 
 	return watchCh, nil
@@ -548,6 +549,7 @@ func watchLoop(ctx context.Context, msgCh chan *string, get getter, push pusher)
 
 	push(pair)
 
+	log.Printf("Waiting for msg in watchLoop")
 	for m := range msgCh {
 		select {
 		case <-ctx.Done():
@@ -569,6 +571,7 @@ func watchLoop(ctx context.Context, msgCh chan *string, get getter, push pusher)
 
 		push(pair)
 	}
+	log.Printf("no more msg in watchLoop")
 
 	return nil
 }
@@ -629,10 +632,12 @@ func (s *subscribe) receiveLoop(ctx context.Context, msgCh chan *string) {
 				var jsonObject map[string]interface{}
 				err = json.Unmarshal(msg, &jsonObject)
 				if err != nil {
+					log.Printf("Unmarshal failed in receiveLoop")
 					return
 				}
 				message, ok := jsonObject["event"].(string)
 				if !ok {
+					log.Printf("Msg conversion failed in receiveLoop")
 					return
 				}
 				log.Printf("message: %s", message)
