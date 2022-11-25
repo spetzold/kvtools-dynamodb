@@ -583,6 +583,7 @@ type subscribe struct {
 
 func newSubscribe(ctx context.Context, key string) (*subscribe, error) {
 
+	// connect to WSS server
 	//var addr = flag.String("addr", "0dub4qh1di.execute-api.eu-central-1.amazonaws.com", "http service address")
 	addr := "0dub4qh1di.execute-api.eu-central-1.amazonaws.com"
 
@@ -594,8 +595,24 @@ func newSubscribe(ctx context.Context, key string) (*subscribe, error) {
 		log.Fatal("dial:", err)
 		return nil, err
 	}
-
 	log.Printf("connected to %s", u.String())
+
+	// subscribe to key
+	msg := map[string]string{
+		"action":    "subscribeChannel",
+		"channelId": key,
+	}
+	jsonStr, err := json.Marshal(msg)
+	if err != nil {
+		log.Println("Error: " + err.Error())
+		return nil, err
+	}
+	err = c.WriteMessage(websocket.TextMessage, []byte(jsonStr))
+	if err != nil {
+		log.Println("write:", err)
+		return nil, err
+	}
+
 	return &subscribe{
 		websocket: c,
 		closeCh:   make(chan struct{}),
