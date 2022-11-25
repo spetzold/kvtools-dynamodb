@@ -594,7 +594,7 @@ func newSubscribe(ctx context.Context, key string) (*subscribe, error) {
 		log.Fatal("dial:", err)
 		return nil, err
 	}
-	defer c.Close()
+
 	log.Printf("connected to %s", u.String())
 	return &subscribe{
 		websocket: c,
