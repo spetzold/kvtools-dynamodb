@@ -596,11 +596,13 @@ func newSubscribe(ctx context.Context, key string, wssServerAddress string, smSv
 		SecretId: aws.String("traefik-wss-secret"),
 	}
 
+	log.Printf("getting secret value")
 	result, err := smSvc.GetSecretValue(input)
 	if err != nil {
 		return nil, err
 	}
 
+	log.Printf("parsing wss erver address")
 	// connect to WSS server
 	u, err := url.Parse(wssServerAddress)
 	if err != nil {
@@ -611,11 +613,13 @@ func newSubscribe(ctx context.Context, key string, wssServerAddress string, smSv
 		"Auth": {*result.SecretString},
 	}
 
+	log.Printf("connecting to server")
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
 	if err != nil {
 		return nil, err
 	}
 
+	log.Printf("subscribing to key")
 	// subscribe to key
 	msg := map[string]string{
 		"action":    "subscribeChannel",
@@ -625,6 +629,7 @@ func newSubscribe(ctx context.Context, key string, wssServerAddress string, smSv
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("writing subscription message")
 	err = c.WriteMessage(websocket.TextMessage, []byte(jsonStr))
 	if err != nil {
 		return nil, err
