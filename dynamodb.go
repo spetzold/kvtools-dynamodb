@@ -112,7 +112,11 @@ func New(_ context.Context, endpoints []string, options *Config) (*Store, error)
 		wssServerAddress = *options.WssServerAddress
 	}
 
-	session := session.Must(session.NewSession(config))
+	session := session.Must(session.NewSessionWithOptions(session.Options{
+		Config:            *config,
+		SharedConfigState: session.SharedConfigEnable,
+	}))
+
 	ddb := &Store{
 		dynamoSvc:         dynamodb.New(session),
 		tableName:         options.Bucket,
