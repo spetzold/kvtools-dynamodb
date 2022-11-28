@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/gorilla/websocket"
 	"github.com/kvtools/valkeyrie"
 	"github.com/kvtools/valkeyrie/store"
@@ -83,9 +84,10 @@ func newStore(ctx context.Context, endpoints []string, options valkeyrie.Config)
 
 // Store implements the store.Store interface.
 type Store struct {
-	dynamoSvc        dynamodbiface.DynamoDBAPI
-	tableName        string
-	wssServerAddress string // the wss server address is used for the watch functionality
+	dynamoSvc         dynamodbiface.DynamoDBAPI
+	tableName         string
+	wssServerAddress  string // the wss server address is used for the watch functionality
+	secretsmanagerSvc *secretsmanager.SecretsManager
 }
 
 // New creates a new AWS DynamoDB client.
@@ -110,10 +112,12 @@ func New(_ context.Context, endpoints []string, options *Config) (*Store, error)
 		wssServerAddress = *options.WssServerAddress
 	}
 
+	session := session.Must(session.NewSession(config))
 	ddb := &Store{
-		dynamoSvc:        dynamodb.New(session.Must(session.NewSession(config))),
-		tableName:        options.Bucket,
-		wssServerAddress: wssServerAddress,
+		dynamoSvc:         dynamodb.New(session),
+		tableName:         options.Bucket,
+		wssServerAddress:  wssServerAddress,
+		secretsmanagerSvc: secretsmanager.New(session),
 	}
 
 	return ddb, nil
@@ -512,7 +516,7 @@ func (ddb *Store) Watch(ctx context.Context, key string, _ *store.ReadOptions) (
 		}
 	})
 
-	sub, err := newSubscribe(ctx, nKey, ddb.wssServerAddress)
+	sub, err := newSubscribe(ctx, nKey, ddb.wssServerAddress, ddb.secretsmanagerSvc)
 	if err != nil {
 		return nil, err
 	}
@@ -585,7 +589,17 @@ type subscribe struct {
 	closeCh   chan struct{}
 }
 
-func newSubscribe(ctx context.Context, key string, wssServerAddress string) (*subscribe, error) {
+func newSubscribe(ctx context.Context, key string, wssServerAddress string, smSvc *secretsmanager.SecretsManager) (*subscribe, error) {
+
+	// get WSS server secret
+	input := &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String("traefik-wss-secret"),
+	}
+
+	result, err := smSvc.GetSecretValue(input)
+	if err != nil {
+		return nil, err
+	}
 
 	// connect to WSS server
 	u, err := url.Parse(wssServerAddress)
@@ -593,7 +607,11 @@ func newSubscribe(ctx context.Context, key string, wssServerAddress string) (*su
 		return nil, err
 	}
 
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	header := map[string][]string{
+		"Auth": {*result.SecretString},
+	}
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
 	if err != nil {
 		return nil, err
 	}
