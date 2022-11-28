@@ -588,7 +588,6 @@ type subscribe struct {
 func newSubscribe(ctx context.Context, key string, wssServerAddress string) (*subscribe, error) {
 
 	// connect to WSS server
-
 	u, err := url.Parse(wssServerAddress)
 	if err != nil {
 		return nil, err
@@ -613,9 +612,33 @@ func newSubscribe(ctx context.Context, key string, wssServerAddress string) (*su
 		return nil, err
 	}
 
+	closeCh := make(chan struct{})
+
+	// ping
+	const awsWssIdleTimeout = 10 * time.Minute
+	pingTicker := time.NewTicker(awsWssIdleTimeout / 2)
+	defer pingTicker.Stop()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-closeCh:
+				return
+			case <-pingTicker.C:
+				c.WriteMessage(websocket.PingMessage, []byte{})
+				if err != nil {
+					log.Printf("write ping erro: %v", err)
+					return
+				}
+			}
+		}
+	}()
+
 	return &subscribe{
 		websocket: c,
-		closeCh:   make(chan struct{}),
+		closeCh:   closeCh,
 	}, nil
 }
 
@@ -642,6 +665,7 @@ func (s *subscribe) receiveLoop(ctx context.Context, msgCh chan *string) {
 		default:
 			_, msg, err := s.websocket.ReadMessage()
 			if err != nil {
+				// TODO: if err is CloseError and CloseError.code == CloseGoingAway (1001) try to reconnect
 				log.Printf("connection closed %v", err)
 				return
 			}
