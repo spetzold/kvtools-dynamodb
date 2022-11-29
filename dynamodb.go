@@ -597,33 +597,11 @@ func newSubscribe(ctx context.Context, key string, wssServerAddress string, smSv
 		SecretId: aws.String("traefik-wss-secret"),
 	}
 
-	log.Printf("getting secret value")
 	result, err := smSvc.GetSecretValue(input)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case secretsmanager.ErrCodeResourceNotFoundException:
-				fmt.Println(secretsmanager.ErrCodeResourceNotFoundException, aerr.Error())
-			case secretsmanager.ErrCodeInvalidParameterException:
-				fmt.Println(secretsmanager.ErrCodeInvalidParameterException, aerr.Error())
-			case secretsmanager.ErrCodeInvalidRequestException:
-				fmt.Println(secretsmanager.ErrCodeInvalidRequestException, aerr.Error())
-			case secretsmanager.ErrCodeDecryptionFailure:
-				fmt.Println(secretsmanager.ErrCodeDecryptionFailure, aerr.Error())
-			case secretsmanager.ErrCodeInternalServiceError:
-				fmt.Println(secretsmanager.ErrCodeInternalServiceError, aerr.Error())
-			default:
-				fmt.Println(aerr.Error())
-			}
-		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			fmt.Println(err.Error())
-		}
 		return nil, err
 	}
 
-	log.Printf("parsing wss erver address")
 	// connect to WSS server
 	u, err := url.Parse(wssServerAddress)
 	if err != nil {
@@ -634,13 +612,11 @@ func newSubscribe(ctx context.Context, key string, wssServerAddress string, smSv
 		"Auth": {*result.SecretString},
 	}
 
-	log.Printf("connecting to server")
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), header)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Printf("subscribing to key")
 	// subscribe to key
 	msg := map[string]string{
 		"action":    "subscribeChannel",
@@ -650,7 +626,7 @@ func newSubscribe(ctx context.Context, key string, wssServerAddress string, smSv
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("writing subscription message")
+
 	err = c.WriteMessage(websocket.TextMessage, []byte(jsonStr))
 	if err != nil {
 		return nil, err
