@@ -100,11 +100,13 @@ func New(_ context.Context, endpoints []string, options *Config) (*Store, error)
 		return nil, ErrBucketOptionMissing
 	}
 	var config *aws.Config = &aws.Config{}
+	var smConfig *aws.Config = &aws.Config{}
 	if len(endpoints) == 1 {
 		config.Endpoint = aws.String(endpoints[0])
 	}
 	if options.Region != nil && *options.Region != "" {
 		config.Region = options.Region
+		smConfig.Region = options.Region
 	}
 
 	wssServerAddress := ""
@@ -112,16 +114,11 @@ func New(_ context.Context, endpoints []string, options *Config) (*Store, error)
 		wssServerAddress = *options.WssServerAddress
 	}
 
-	session := session.Must(session.NewSessionWithOptions(session.Options{
-		Config:            *config,
-		SharedConfigState: session.SharedConfigEnable,
-	}))
-
 	ddb := &Store{
-		dynamoSvc:         dynamodb.New(session),
+		dynamoSvc:         dynamodb.New(session.Must(session.NewSession(config))),
 		tableName:         options.Bucket,
 		wssServerAddress:  wssServerAddress,
-		secretsmanagerSvc: secretsmanager.New(session),
+		secretsmanagerSvc: secretsmanager.New(session.Must(session.NewSession(smConfig))),
 	}
 
 	return ddb, nil
